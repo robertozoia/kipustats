@@ -1,0 +1,11 @@
+services:
+  analytics:
+    build: .
+    container_name: analytics
+    restart: unless-stopped
+    volumes:
+      - ./analytics-data:/data
+    ports:
+      - "127.0.0.1:8082:3001"
+    environment:
+      - DATABASE_PATH=/data/analytics.db

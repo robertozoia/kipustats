@@ -108,14 +108,15 @@ async fn track_event(
 }
 
 pub fn init_db() -> rusqlite::Result<Connection> {
-    let db_path = "./data/analytics.db";
+    let db_path = std::env::var("DATABASE_PATH")
+        .unwrap_or_else(|_| "./data/analytics.db".to_string());
 
     // make sure directory exists
-    if let Some(parent) = std::path::Path::new(db_path).parent() {
+    if let Some(parent) = std::path::Path::new(&db_path).parent() {
         std::fs::create_dir_all(parent).expect("Failed to create data directory");
     }
 
-    let conn = Connection::open(db_path)?;
+    let conn = Connection::open(&db_path)?;
 
     conn.execute(
        "CREATE TABLE IF NOT EXISTS events (
