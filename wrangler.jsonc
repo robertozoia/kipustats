@@ -12,7 +12,14 @@
 	},
 	"compatibility_flags": [
 		"nodejs_compat"
-	]
+	],
+	"vars": {
+		"ANALYTICS_ENDPOINT":  "https://analytics.robertozoia.com/api/v1/events",
+	},
+	"routes": [
+		{ "pattern": "zoia.org/*", "zone_name": "zoia.org" },
+		{ "pattern": "www.zoia.org/*", "zone_name": "zoia.org" }
+	],
 	/**
 	 * Smart Placement
 	 * https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
