@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}RSS Readers{% endblock %}
+{% block content %}
+<h1>RSS Readers</h1>
+<div class="date-picker">
+    <form hx-get="/dashboard/rss" hx-target="#stats" hx-select="#stats" hx-swap="outerHTML" hx-push-url="true">
+        <label>From</label>
+        <input type="date" name="from" value="{{ from }}">
+        <label>To</label>
+        <input type="date" name="to" value="{{ to }}">
+        <button type="submit">Apply</button>
+    </form>
+</div>
+<div id="stats">
+    <div class="cards">
+        <div class="card">
+            <h2>{{ total_hits }}</h2>
+            <p>Total RSS Hits</p>
+        </div>
+        <div class="card">
+            <h2>{{ total_subscribers }}</h2>
+            <p>Unique Subscribers</p>
+        </div>
+        <div class="card">
+            <h2>{{ client_count }}</h2>
+            <p>Reader Clients</p>
+        </div>
+    </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        <div class="chart-container">
+            <div id="rss-pie" style="height: 300px;"></div>
+        </div>
+        <div class="chart-container">
+            <div id="rss-timeline" style="height: 300px;"></div>
+        </div>
+    </div>
+    <h2 class="section">By Client</h2>
+    {% if by_client.is_empty() %}
+    <div class="empty-state">No RSS reader data for this period.</div>
+    {% else %}
+    <table>
+        <thead>
+            <tr>
+                <th>Client</th>
+                <th class="num">Hits</th>
+                <th class="num">Unique Subscribers</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for c in by_client %}
+            <tr>
+                <td>{{ c.client_name }}</td>
+                <td class="num">{{ c.hits }}</td>
+                <td class="num">{{ c.unique_subscribers }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+    // Pie chart
+    var pieEl = document.getElementById('rss-pie');
+    if (pieEl) {
+        var pieChart = echarts.init(pieEl);
+        pieChart.setOption({
+            tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+            series: [{
+                type: 'pie', radius: ['40%', '70%'],
+                label: { fontSize: 11 },
+                data: [{% for c in by_client %}{ name: "{{ c.client_name }}", value: {{ c.hits }} }{% if !loop.last %},{% endif %}{% endfor %}]
+            }]
+        });
+        window.addEventListener('resize', function() { pieChart.resize(); });
+    }
+
+    // Timeline chart
+    var timeEl = document.getElementById('rss-timeline');
+    if (timeEl) {
+        var timeChart = echarts.init(timeEl);
+        var dates = {{ timeline_dates_json }};
+        var series = {{ timeline_series_json }};
+        timeChart.setOption({
+            tooltip: { trigger: 'axis' },
+            legend: { bottom: 0, type: 'scroll' },
+            grid: { left: 50, right: 20, top: 10, bottom: 40 },
+            xAxis: { type: 'category', data: dates },
+            yAxis: { type: 'value' },
+            series: series
+        });
+        window.addEventListener('resize', function() { timeChart.resize(); });
+    }
+})();
+</script>
+{% endblock %}
