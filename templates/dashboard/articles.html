@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Articles{% endblock %}
+{% block content %}
+<h1>Top Articles</h1>
+<div class="date-picker">
+    <form hx-get="/dashboard/articles" hx-target="#stats" hx-select="#stats" hx-swap="outerHTML" hx-push-url="true">
+        <label>From</label>
+        <input type="date" name="from" value="{{ from }}">
+        <label>To</label>
+        <input type="date" name="to" value="{{ to }}">
+        <button type="submit">Apply</button>
+    </form>
+</div>
+<div id="stats">
+    <div class="chart-container">
+        <div id="articles-chart" style="height: {{ chart_height }}px;"></div>
+    </div>
+    {% if articles.is_empty() %}
+    <div class="empty-state">No data for this period.</div>
+    {% else %}
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>URL</th>
+                <th class="num">Views</th>
+                <th class="num">Unique</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for a in articles %}
+            <tr>
+                <td class="num">{{ loop.index }}</td>
+                <td class="url-cell" title="{{ a.url }}">{{ a.url }}</td>
+                <td class="num">{{ a.views }}</td>
+                <td class="num">{{ a.unique_visitors }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+    var el = document.getElementById('articles-chart');
+    if (!el) return;
+    var chart = echarts.init(el);
+    var urls = [{% for a in articles %}"{{ a.url }}"{% if !loop.last %},{% endif %}{% endfor %}];
+    var views = [{% for a in articles %}{{ a.views }}{% if !loop.last %},{% endif %}{% endfor %}];
+    chart.setOption({
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        grid: { left: 300, right: 40, top: 10, bottom: 20 },
+        xAxis: { type: 'value' },
+        yAxis: { type: 'category', data: urls.reverse(), axisLabel: { width: 280, overflow: 'truncate' } },
+        series: [{ type: 'bar', data: views.reverse(), itemStyle: { color: '#2563eb' } }]
+    });
+    window.addEventListener('resize', function() { chart.resize(); });
+})();
+</script>
+{% endblock %}

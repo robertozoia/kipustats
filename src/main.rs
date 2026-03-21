@@ -1,53 +1,107 @@
+mod auth;
+mod classify;
+mod db;
+mod handlers;
+mod models;
 
 use axum::{
-    extract::{Json, State},
+    middleware,
     routing::{get, post},
     Router,
-    http::StatusCode,
-    response::IntoResponse,
 };
-
-use rusqlite::Connection;
-use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
+use tower_cookies::CookieManagerLayer;
 
-// Define the App State to hold the DB Connection
-#[derive(Clone)]
-struct AppState {
-    db: Arc<Mutex<Connection>>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnalyticsEvent {
-    pub url: String,
-    pub referer: Option<String>,
-    pub user_agent: String,
-    pub country: Option<String>,
-    pub city: Option<String>,
-    pub timezone: Option<String>,
-    pub timestamp: String,
-    pub visitor_hash: String,
-}
-
+use auth::AuthConfig;
+use db::AppState;
+use handlers::api;
+use handlers::dashboard;
+use handlers::events::{health_check, track_event};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Handle --hash-password flag: read password from stdin, print bcrypt hash, exit
+    if std::env::args().any(|a| a == "--hash-password") {
+        let mut password = String::new();
+        std::io::Read::read_to_string(&mut std::io::stdin(), &mut password)?;
+        let password = password.trim_end();
+        if password.is_empty() {
+            eprintln!("Error: no password provided. Usage: echo -n 'yourpassword' | blog-analytics-service --hash-password");
+            std::process::exit(1);
+        }
+        let hash = bcrypt::hash(password, bcrypt::DEFAULT_COST)?;
+        println!("{hash}");
+        return Ok(());
+    }
 
     tracing_subscriber::fmt::init();
 
-    // Initialize the DB
-    // We call this synchronously in main before the async server starts
+    let conn = db::init_db()?;
 
-    let conn = init_db()?;
+    // Read auth config from environment
+    let password_hash = std::env::var("DASHBOARD_PASSWORD_HASH")
+        .unwrap_or_else(|_| {
+            // Default hash for development: password is "admin"
+            // Generate a new one with: echo -n 'yourpassword' | htpasswd -niBC 10 "" | cut -d: -f2
+            tracing::warn!("DASHBOARD_PASSWORD_HASH not set, using default dev password 'admin'");
+            bcrypt::hash("admin", bcrypt::DEFAULT_COST).unwrap()
+        });
 
-    // create the shared state
+    let cookie_secret = std::env::var("COOKIE_SECRET")
+        .unwrap_or_else(|_| {
+            tracing::warn!("COOKIE_SECRET not set, using random secret (sessions won't survive restarts)");
+            use std::collections::hash_map::RandomState;
+            use std::hash::{BuildHasher, Hasher};
+            let s = RandomState::new();
+            format!("{:016x}{:016x}{:016x}{:016x}",
+                s.build_hasher().finish(),
+                s.build_hasher().finish(),
+                s.build_hasher().finish(),
+                s.build_hasher().finish(),
+            )
+        });
+
     let state = AppState {
         db: Arc::new(Mutex::new(conn)),
+        auth: AuthConfig {
+            password_hash,
+            cookie_secret: cookie_secret.into_bytes(),
+        },
     };
 
-    let app = Router::new()
+    // Public routes (no auth required)
+    let public_routes = Router::new()
         .route("/api/v1/health", get(health_check))
         .route("/api/v1/events", post(track_event))
+        .route("/dashboard/login", get(auth::login_page))
+        .route("/dashboard/login", post(auth::login_submit));
+
+    // Protected routes (auth required)
+    let protected_routes = Router::new()
+        .route("/api/v1/stats/overview", get(api::stats_overview))
+        .route("/api/v1/stats/timeseries", get(api::stats_timeseries))
+        .route("/api/v1/stats/articles", get(api::stats_articles))
+        .route("/api/v1/stats/rss", get(api::stats_rss))
+        .route("/api/v1/stats/bots", get(api::stats_bots))
+        .route("/api/v1/stats/referrers", get(api::stats_referrers))
+        .route("/api/v1/stats/geo", get(api::stats_geo))
+        // Dashboard HTML routes
+        .route("/dashboard", get(dashboard::dashboard_overview))
+        .route("/dashboard/articles", get(dashboard::dashboard_articles))
+        .route("/dashboard/rss", get(dashboard::dashboard_rss))
+        .route("/dashboard/bots", get(dashboard::dashboard_bots))
+        .route("/dashboard/referrers", get(dashboard::dashboard_referrers))
+        .route("/dashboard/geo", get(dashboard::dashboard_geo))
+        .route("/dashboard/logout", get(auth::logout))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::require_auth,
+        ));
+
+    let app = Router::new()
+        .merge(public_routes)
+        .merge(protected_routes)
+        .layer(CookieManagerLayer::new())
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3001")
@@ -60,79 +114,3 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
-
-async fn health_check() -> impl IntoResponse{
-    (StatusCode::OK, "ok")
-}
-
-// a handler that accepts state
-#[axum::debug_handler]
-async fn track_event(
-    State(state): State<AppState>,
-    Json(event): Json<AnalyticsEvent>,
-) -> Result<(StatusCode, Json<AnalyticsEvent>), (StatusCode, &'static str)> {
-    tracing::info!(
-        url           = %event.url,
-        referer       = ?event.referer,
-        user_agent    = %event.user_agent,
-        country       = ?event.country,
-        city          = ?event.city,
-        timezone      = ?event.timezone,
-        timestamp     = %event.timestamp,
-        visitor_hash  = %event.visitor_hash,
-        "Analytics event received"
-    );
-
-    // lock the db and insert the data
-    let db = state.db.lock().unwrap();
-
-    db.execute(
-        "INSERT INTO events (url, referer, user_agent, country, city, timezone, timestamp, visitor_hash)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        (
-            &event.url,
-            &event.referer,
-            &event.user_agent,
-            &event.country,
-            &event.city,
-            &event.timezone,
-            &event.timestamp,
-            &event.visitor_hash,
-        ),
-    ).map_err(|e| {
-        tracing::error!("Failed to insert event: {}", e);
-        (StatusCode::INTERNAL_SERVER_ERROR, "Failed to save event")
-    })?;
-
-    Ok((StatusCode::ACCEPTED, Json(event)))
-}
-
-pub fn init_db() -> rusqlite::Result<Connection> {
-    let db_path = std::env::var("DATABASE_PATH")
-        .unwrap_or_else(|_| "./data/analytics.db".to_string());
-
-    // make sure directory exists
-    if let Some(parent) = std::path::Path::new(&db_path).parent() {
-        std::fs::create_dir_all(parent).expect("Failed to create data directory");
-    }
-
-    let conn = Connection::open(&db_path)?;
-
-    conn.execute(
-       "CREATE TABLE IF NOT EXISTS events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            url TEXT NOT NULL,
-            referer TEXT,
-            user_agent TEXT NOT NULL,
-            country TEXT,
-            city TEXT,
-            timezone TEXT,
-            timestamp TEXT NOT NULL,
-            visitor_hash TEXT NOT NULL
-        )",
-        [],    
-    )?;
-
-    Ok(conn)
-}
-

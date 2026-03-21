@@ -8,6 +8,7 @@ RUN mkdir src && echo "fn main() {}" > src/main.rs \
     && rm -rf src
 
 COPY src ./src
+COPY templates ./templates
 RUN touch src/main.rs && cargo build --release
 
 FROM debian:bookworm-slim

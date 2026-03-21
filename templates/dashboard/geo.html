@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Geography{% endblock %}
+{% block content %}
+<h1>Geography</h1>
+<div class="date-picker">
+    <form hx-get="/dashboard/geo" hx-target="#stats" hx-select="#stats" hx-swap="outerHTML" hx-push-url="true">
+        <label>From</label>
+        <input type="date" name="from" value="{{ from }}">
+        <label>To</label>
+        <input type="date" name="to" value="{{ to }}">
+        <button type="submit">Apply</button>
+    </form>
+</div>
+<div id="stats">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+        <div>
+            <h2 class="section">Countries</h2>
+            {% if countries.is_empty() %}
+            <div class="empty-state">No data.</div>
+            {% else %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Country</th>
+                        <th class="num">Hits</th>
+                        <th class="num">Unique</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in countries %}
+                    <tr>
+                        <td>{{ c.country }}</td>
+                        <td class="num">{{ c.hits }}</td>
+                        <td class="num">{{ c.unique_visitors }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+        <div>
+            <h2 class="section">Top Cities</h2>
+            {% if cities.is_empty() %}
+            <div class="empty-state">No data.</div>
+            {% else %}
+            <table>
+                <thead>
+                    <tr>
+                        <th>City</th>
+                        <th>Country</th>
+                        <th class="num">Hits</th>
+                        <th class="num">Unique</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in cities %}
+                    <tr>
+                        <td>{{ c.city }}</td>
+                        <td>{{ c.country }}</td>
+                        <td class="num">{{ c.hits }}</td>
+                        <td class="num">{{ c.unique_visitors }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+        </div>
+    </div>
+    <div class="chart-container" style="margin-top: 1.5rem;">
+        <div id="countries-chart" style="height: {{ chart_height }}px;"></div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+    var el = document.getElementById('countries-chart');
+    if (!el) return;
+    var chart = echarts.init(el);
+    var names = [{% for c in countries %}"{{ c.country }}"{% if !loop.last %},{% endif %}{% endfor %}];
+    var hits = [{% for c in countries %}{{ c.hits }}{% if !loop.last %},{% endif %}{% endfor %}];
+    chart.setOption({
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        grid: { left: 80, right: 40, top: 10, bottom: 20 },
+        xAxis: { type: 'value' },
+        yAxis: { type: 'category', data: names.reverse(), axisLabel: { width: 60, overflow: 'truncate' } },
+        series: [{ type: 'bar', data: hits.reverse(), itemStyle: { color: '#8b5cf6' } }]
+    });
+    window.addEventListener('resize', function() { chart.resize(); });
+})();
+</script>
+{% endblock %}

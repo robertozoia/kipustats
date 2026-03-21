@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Referrers{% endblock %}
+{% block content %}
+<h1>Referrers</h1>
+<div class="date-picker">
+    <form hx-get="/dashboard/referrers" hx-target="#stats" hx-select="#stats" hx-swap="outerHTML" hx-push-url="true">
+        <label>From</label>
+        <input type="date" name="from" value="{{ from }}">
+        <label>To</label>
+        <input type="date" name="to" value="{{ to }}">
+        <button type="submit">Apply</button>
+    </form>
+</div>
+<div id="stats">
+    <div class="chart-container">
+        <div id="referrers-chart" style="height: {{ chart_height }}px;"></div>
+    </div>
+    {% if referrers.is_empty() %}
+    <div class="empty-state">No referrer data for this period.</div>
+    {% else %}
+    <table>
+        <thead>
+            <tr>
+                <th>Referrer</th>
+                <th class="num">Hits</th>
+                <th class="num">Unique Visitors</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in referrers %}
+            <tr>
+                <td class="url-cell" title="{{ r.referrer }}">{{ r.referrer }}</td>
+                <td class="num">{{ r.hits }}</td>
+                <td class="num">{{ r.unique_visitors }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+    var el = document.getElementById('referrers-chart');
+    if (!el) return;
+    var chart = echarts.init(el);
+    var names = [{% for r in referrers %}"{{ r.referrer }}"{% if !loop.last %},{% endif %}{% endfor %}];
+    var hits = [{% for r in referrers %}{{ r.hits }}{% if !loop.last %},{% endif %}{% endfor %}];
+    chart.setOption({
+        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+        grid: { left: 300, right: 40, top: 10, bottom: 20 },
+        xAxis: { type: 'value' },
+        yAxis: { type: 'category', data: names.reverse(), axisLabel: { width: 280, overflow: 'truncate' } },
+        series: [{ type: 'bar', data: hits.reverse(), itemStyle: { color: '#10b981' } }]
+    });
+    window.addEventListener('resize', function() { chart.resize(); });
+})();
+</script>
+{% endblock %}

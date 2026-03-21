@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+<h1>Overview</h1>
+<div class="date-picker">
+    <form hx-get="/dashboard" hx-target="#stats" hx-select="#stats" hx-swap="outerHTML" hx-push-url="true">
+        <label>From</label>
+        <input type="date" name="from" value="{{ from }}">
+        <label>To</label>
+        <input type="date" name="to" value="{{ to }}">
+        <button type="submit">Apply</button>
+    </form>
+</div>
+<div id="stats">
+    <div class="cards">
+        <div class="card">
+            <h2>{{ total_pageviews }}</h2>
+            <p>Pageviews</p>
+        </div>
+        <div class="card">
+            <h2>{{ unique_visitors }}</h2>
+            <p>Unique Visitors</p>
+        </div>
+        <div class="card">
+            <h2>{{ today_pageviews }}</h2>
+            <p>Today Views</p>
+        </div>
+        <div class="card">
+            <h2>{{ today_unique_visitors }}</h2>
+            <p>Today Unique</p>
+        </div>
+    </div>
+    <div class="chart-container">
+        <div id="timeseries-chart" style="height: 350px;"></div>
+    </div>
+    <h2 class="section">Top Pages</h2>
+    {% if top_pages.is_empty() %}
+    <div class="empty-state">No data for this period.</div>
+    {% else %}
+    <table>
+        <thead>
+            <tr>
+                <th>URL</th>
+                <th class="num">Views</th>
+                <th class="num">Unique</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for page in top_pages %}
+            <tr>
+                <td class="url-cell" title="{{ page.url }}">{{ page.url }}</td>
+                <td class="num">{{ page.views }}</td>
+                <td class="num">{{ page.unique_visitors }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+    var el = document.getElementById('timeseries-chart');
+    if (!el) return;
+    var chart = echarts.init(el);
+    chart.setOption({
+        tooltip: { trigger: 'axis' },
+        legend: { data: ['Views', 'Unique Visitors'], bottom: 0 },
+        grid: { left: 50, right: 20, top: 20, bottom: 40 },
+        xAxis: { type: 'category', data: [{% for p in timeseries %}"{{ p.date }}"{% if !loop.last %},{% endif %}{% endfor %}] },
+        yAxis: { type: 'value' },
+        series: [
+            { name: 'Views', type: 'line', smooth: true, data: [{% for p in timeseries %}{{ p.views }}{% if !loop.last %},{% endif %}{% endfor %}] },
+            { name: 'Unique Visitors', type: 'line', smooth: true, data: [{% for p in timeseries %}{{ p.unique_visitors }}{% if !loop.last %},{% endif %}{% endfor %}] }
+        ]
+    });
+    window.addEventListener('resize', function() { chart.resize(); });
+})();
+</script>
+{% endblock %}
