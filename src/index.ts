@@ -38,40 +38,25 @@ function shouldTrack(url: URL): boolean {
 interface AnalyticsEvent {
 	url: string;
 	referer: string | null;
-	userAgent: string | null;
+	user_agent: string | null;
 	country: string | null;
 	city: string | null;
 	timezone: string | null;
-	timestamp: number;
-	visitorHash: string;
+	timestamp: string;
+	visitor_hash: string;
 }
 
-// Extend standard Request interface to include Cloudflare specific properties
-interface CloudflareRequest extends Request {
-	cf?: {
-		country?: string;
-		city?: string;
-		timezone?: string;
-	};
-}
-
-function buildEvent(request: CloudflareRequest): AnalyticsEvent {
+async function buildEvent(request: Request): Promise<AnalyticsEvent> {
+	const cf = (request as any).cf;
 	return {
-		// request.url contains the full URL (path + querystring)
 		url: request.url,
-
-		// note the HTTP misspelling 'referer'
 		referer: request.headers.get('referer'),
-
-		userAgent: request.headers.get('user-agent'),
-
-		// Accessing Cloudflare propierties with optional chaining and null fallbacks
-		country: request.cf?.country ?? null,
-		city: request.cf?.city ?? null,
-		timezone: request.cf?.timezone ?? null,
-
-		// current time in milliseconds
-		timestamp: Date.now(),
+		user_agent: request.headers.get('user-agent'),
+		country: cf?.country ?? null,
+		city: cf?.city ?? null,
+		timezone: cf?.timezone ?? null,
+		timestamp: new Date().toISOString(),
+		visitor_hash: await hashVisitorId(request),
 	};
 }
 
