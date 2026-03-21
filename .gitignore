@@ -1,0 +1,13 @@
+# Rust
+service/target/
+service/data/
+
+# Node / Worker
+worker/node_modules/
+worker/.wrangler/
+
+# Environment files
+service/analytics.env
+
+# OS
+.DS_Store
