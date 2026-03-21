@@ -7,7 +7,7 @@ services:
       - ./analytics-data:/data
     ports:
       - "127.0.0.1:8082:3001"
+    env_file:
+      - .env
     environment:
       - DATABASE_PATH=/data/analytics.db
-      - DASHBOARD_PASSWORD_HASH=${DASHBOARD_PASSWORD_HASH}
-      - COOKIE_SECRET=${COOKIE_SECRET}
