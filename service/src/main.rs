@@ -7,6 +7,7 @@ mod models;
 use axum::{
     http::HeaderValue,
     middleware,
+    response::Redirect,
     routing::{get, post},
     Router,
 };
@@ -84,6 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Public routes (no auth required)
     let public_routes = Router::new()
+        .route("/", get(|| async { Redirect::permanent("/dashboard") }))
         .route("/api/v1/health", get(health_check))
         .route("/api/v1/events", post(track_event))
         .route("/dashboard/login", get(auth::login_page))
