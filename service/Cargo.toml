@@ -19,5 +19,6 @@ hex = "0.4"
 tower-cookies = "0.11"
 axum-extra = { version = "0.10", features = ["cookie"] }
 askama = "0.13"
+tower-http = { version = "0.6", features = ["cors"] }
 
 

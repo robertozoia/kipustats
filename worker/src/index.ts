@@ -62,7 +62,7 @@ async function buildEvent(request: Request): Promise<AnalyticsEvent> {
 
 interface Env {
 	ANALYTICS_ENDPOINT: string;
-	// Add other bindings here if needed (KV, D4, etc.)
+	AUTH_TOKEN: string;
 }
 
 async function sendEvent(event: AnalyticsEvent, env: Env): Promise<void> {
@@ -71,6 +71,7 @@ async function sendEvent(event: AnalyticsEvent, env: Env): Promise<void> {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${env.AUTH_TOKEN}`,
 			},
 			body: JSON.stringify(event),
 		});

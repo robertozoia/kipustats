@@ -8,6 +8,7 @@ use crate::models::*;
 pub struct AppState {
     pub db: Arc<Mutex<Connection>>,
     pub auth: AuthConfig,
+    pub auth_token: Option<String>,
 }
 
 pub fn init_db() -> rusqlite::Result<Connection> {

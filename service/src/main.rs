@@ -5,12 +5,14 @@ mod handlers;
 mod models;
 
 use axum::{
+    http::HeaderValue,
     middleware,
     routing::{get, post},
     Router,
 };
 use std::sync::{Arc, Mutex};
 use tower_cookies::CookieManagerLayer;
+use tower_http::cors::{AllowOrigin, CorsLayer};
 
 use auth::AuthConfig;
 use db::AppState;
@@ -66,12 +68,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
         });
 
+    let auth_token = std::env::var("AUTH_TOKEN").ok();
+    if auth_token.is_none() {
+        tracing::warn!("AUTH_TOKEN not set, event ingestion endpoint is open to anyone");
+    }
+
     let state = AppState {
         db: Arc::new(Mutex::new(conn)),
         auth: AuthConfig {
             password_hash,
             cookie_secret: cookie_secret.into_bytes(),
         },
+        auth_token,
     };
 
     // Public routes (no auth required)
@@ -103,9 +111,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             auth::require_auth,
         ));
 
+    let cors = match std::env::var("CORS_ORIGIN") {
+        Ok(origin) => {
+            let origins: Vec<HeaderValue> = origin
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+            CorsLayer::new().allow_origin(AllowOrigin::list(origins))
+        }
+        Err(_) => CorsLayer::new(),
+    };
+
     let app = Router::new()
         .merge(public_routes)
         .merge(protected_routes)
+        .layer(cors)
         .layer(CookieManagerLayer::new())
         .with_state(state);
 

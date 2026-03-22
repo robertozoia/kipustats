@@ -1,6 +1,6 @@
 use axum::{
     extract::{Json, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
 };
 
@@ -11,11 +11,35 @@ pub async fn health_check() -> impl IntoResponse {
     (StatusCode::OK, "ok")
 }
 
+fn verify_token(headers: &HeaderMap, expected: &Option<String>) -> Result<(), (StatusCode, &'static str)> {
+    let expected = match expected {
+        Some(t) => t,
+        None => return Ok(()), // no token configured, allow all
+    };
+
+    let header = headers
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .ok_or((StatusCode::UNAUTHORIZED, "Missing Authorization header"))?;
+
+    let token = header
+        .strip_prefix("Bearer ")
+        .ok_or((StatusCode::UNAUTHORIZED, "Invalid Authorization format"))?;
+
+    if token != expected {
+        return Err((StatusCode::UNAUTHORIZED, "Invalid token"));
+    }
+
+    Ok(())
+}
+
 #[axum::debug_handler]
 pub async fn track_event(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(event): Json<AnalyticsEvent>,
 ) -> Result<(StatusCode, Json<AnalyticsEvent>), (StatusCode, &'static str)> {
+    verify_token(&headers, &state.auth_token)?;
     tracing::info!(
         url           = %event.url,
         referer       = ?event.referer,
