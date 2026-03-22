@@ -4,10 +4,10 @@ services:
     container_name: analytics
     restart: unless-stopped
     volumes:
-      - ./analytics-data:/data
+      - ${DATABASE_DIR:-./analytics-data}:/data
     ports:
       - "127.0.0.1:8082:3001"
     env_file:
       - analytics.env
     environment:
-      - DATABASE_PATH=/data/analytics.db
+      - DATABASE_PATH=/data/${DATABASE_NAME:-analytics.db}
