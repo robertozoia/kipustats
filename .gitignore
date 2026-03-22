@@ -7,7 +7,7 @@ worker/node_modules/
 worker/.wrangler/
 
 # Environment files
-service/analytics.env
+service/.env
 
 # OS
 .DS_Store

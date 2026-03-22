@@ -1,4 +1,4 @@
-# Blog Analytics
+# Kipustats
 
 A privacy-focused, self-hosted analytics system for a blog. It consists of two components that work together: a **Cloudflare Worker** that captures page views at the edge, and a **Rust backend service** that stores events in SQLite and serves a password-protected dashboard.
 
@@ -8,6 +8,7 @@ A privacy-focused, self-hosted analytics system for a blog. It consists of two c
                         │  (worker/)          │
                         └────────┬───────────┘
                                  │ POST /api/v1/events
+                                 │ (Bearer token auth)
                                  ▼
                         ┌────────────────────┐
                         │  Analytics Service  │
@@ -23,14 +24,14 @@ A privacy-focused, self-hosted analytics system for a blog. It consists of two c
 
 ## How It Works
 
-1. The **Cloudflare Worker** sits in front of the blog (configured as a route on the domain). Every incoming request passes through it. For trackable pages (paths ending in `/` or `/index.xml`), the worker extracts metadata — URL, referer, user-agent, country, city, and timezone (from Cloudflare's GeoIP) — and creates a privacy-preserving visitor hash (SHA-256 of the IP + current date, rotated daily). It then sends this event asynchronously to the analytics service via `POST /api/v1/events`, without delaying the response to the visitor.
+1. The **Cloudflare Worker** sits in front of the blog (configured as a route on the domain). Every incoming request passes through it. For trackable pages (paths ending in `/` or `/index.xml`), the worker extracts metadata — URL, referer, user-agent, country, city, and timezone (from Cloudflare's GeoIP) — and creates a privacy-preserving visitor hash (SHA-256 of the IP + current date, rotated daily). It then sends this event asynchronously to the analytics service via `POST /api/v1/events` with a Bearer token, without delaying the response to the visitor.
 
-2. The **Analytics Service** receives events, classifies the user-agent (browser, RSS reader, or bot), and stores everything in SQLite. It serves a web dashboard with six views: Overview, Articles, RSS, Bots, Referrers, and Geography. All views support date range filtering.
+2. The **Analytics Service** validates the token, classifies the user-agent (browser, RSS reader, or bot), and stores everything in SQLite. It serves a web dashboard with six views: Overview, Articles, RSS, Bots, Referrers, and Geography. All views support date range filtering.
 
 ## Repository Structure
 
 ```
-blog-analytics/
+kipustats/
 ├── service/                     # Rust backend (Axum + SQLite)
 │   ├── src/
 │   │   ├── main.rs              # Entrypoint, router, auth config
@@ -46,7 +47,7 @@ blog-analytics/
 │   ├── Cargo.toml
 │   ├── Dockerfile
 │   ├── docker-compose.yml
-│   └── analytics.env.example
+│   └── .env.example
 │
 └── worker/                      # Cloudflare Worker (TypeScript)
     ├── src/
@@ -67,10 +68,10 @@ blog-analytics/
 
 ```sh
 cd service
-cp analytics.env.example analytics.env
+cp .env.example .env
 ```
 
-Edit `analytics.env` and set:
+Edit `.env` and set the required values:
 
 ```sh
 # Pick a strong password for the dashboard
@@ -79,6 +80,10 @@ DASHBOARD_PASSWORD=your-secure-password
 # Generate a random secret for session cookies
 # openssl rand -hex 32
 COOKIE_SECRET=your-random-hex-string
+
+# Shared secret for authenticating worker requests (must match the worker's AUTH_TOKEN)
+# openssl rand -hex 32
+AUTH_TOKEN=your-shared-token
 ```
 
 **Run locally (development):**
@@ -125,6 +130,12 @@ Edit `wrangler.jsonc` to set your domain routes and analytics endpoint:
 }
 ```
 
+Set the auth token as a Cloudflare Worker secret (must match the service's `AUTH_TOKEN`):
+
+```sh
+npx wrangler secret put AUTH_TOKEN
+```
+
 **Local development:**
 
 ```sh
@@ -137,18 +148,23 @@ npm run dev
 npm run deploy
 ```
 
-## Environment Variables (Service)
+## Environment Variables
+
+All service configuration lives in a single `service/.env` file (see `.env.example`). This file is read by Docker Compose for volume mapping and passed into the container at runtime.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `DASHBOARD_PASSWORD` | Yes (prod) | `admin` | Dashboard password (plaintext, hashed at startup) |
 | `DASHBOARD_PASSWORD_HASH` | No | — | Alternative: pre-hashed bcrypt password |
 | `COOKIE_SECRET` | Yes (prod) | Random | Secret for signing session cookies |
-| `DATABASE_PATH` | No | `./data/analytics.db` | Path to the SQLite database file |
+| `AUTH_TOKEN` | Recommended | — | Shared secret for worker-to-service auth (if unset, ingestion is open) |
+| `CORS_ORIGIN` | No | — | Comma-separated allowed origins (e.g., `https://yourdomain.com`) |
+| `DATABASE_DIR` | No | `./analytics-data` | Host directory mounted as the database volume |
+| `DATABASE_NAME` | No | `analytics.db` | SQLite database filename |
 
 ## Dashboard
 
-After logging in at `/dashboard/login`, the dashboard provides:
+The root URL (`/`) redirects to the dashboard. After logging in at `/dashboard/login`, the dashboard provides:
 
 | View | URL | Description |
 |---|---|---|
@@ -167,7 +183,7 @@ All views include a date range picker. The default range is the last 30 days.
 
 **`GET /api/v1/health`** — Returns `200 OK` with body `ok`.
 
-**`POST /api/v1/events`** — Accepts a page view event (called by the worker):
+**`POST /api/v1/events`** — Accepts a page view event (called by the worker). Requires `Authorization: Bearer <token>` header when `AUTH_TOKEN` is configured.
 
 ```json
 {
@@ -214,7 +230,13 @@ echo -n 'my-password' | cargo run -- --hash-password
 
 ## Data Persistence
 
-The SQLite database is stored in a Docker volume mapped to `./analytics-data/` on the host. This directory persists across container rebuilds.
+The SQLite database is stored in a Docker volume mapped to `DATABASE_DIR` on the host (`./analytics-data/` by default). This directory persists across container rebuilds.
+
+## Security
+
+- **API token auth** — The event ingestion endpoint validates a shared Bearer token between the worker and service. Set `AUTH_TOKEN` in the service's `.env` and as a Cloudflare Worker secret.
+- **CORS** — Optionally restrict which origins can make browser requests via the `CORS_ORIGIN` variable.
+- **Dashboard auth** — bcrypt password protection with signed cookie sessions.
 
 ## Privacy
 

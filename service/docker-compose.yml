@@ -8,6 +8,6 @@ services:
     ports:
       - "127.0.0.1:8082:3001"
     env_file:
-      - analytics.env
+      - .env
     environment:
       - DATABASE_PATH=/data/${DATABASE_NAME:-analytics.db}
